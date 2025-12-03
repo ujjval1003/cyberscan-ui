@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { CyberButton } from "@/components/ui/CyberButton";
+import { LoadingState } from "@/components/ui/LoadingState";
+import { ApiErrorState } from "@/components/ui/ApiErrorState";
 import { api, Image as ImageType } from "@/lib/api";
 import { toast } from "@/hooks/use-toast";
 import { Link } from "react-router-dom";
@@ -34,6 +36,7 @@ import {
 const FileManager = () => {
   const [images, setImages] = useState<ImageType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -43,15 +46,13 @@ const FileManager = () => {
   }, []);
 
   const fetchImages = async () => {
+    setIsLoading(true);
+    setError(null);
     try {
       const result = await api.getImages();
-      setImages(result.images);
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
+      setImages(result.images || []);
+    } catch (err: any) {
+      setError(err);
     } finally {
       setIsLoading(false);
     }
@@ -196,9 +197,9 @@ const FileManager = () => {
 
       {/* Image Grid/List */}
       {isLoading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="w-10 h-10 animate-spin text-primary" />
-        </div>
+        <LoadingState message="Loading your images..." />
+      ) : error ? (
+        <ApiErrorState error={error} onRetry={fetchImages} title="Failed to load images" />
       ) : filteredImages.length === 0 ? (
         <GlassCard className="text-center py-16">
           <FolderOpen className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
