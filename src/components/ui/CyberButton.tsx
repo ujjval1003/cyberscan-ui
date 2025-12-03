@@ -30,6 +30,19 @@ const CyberButton = forwardRef<HTMLButtonElement, CyberButtonProps>(
 
     const Comp = asChild ? Slot : "button";
 
+    // When asChild is true, Slot expects exactly one child
+    if (asChild) {
+      return (
+        <Comp
+          ref={ref}
+          className={cn(baseClasses, variants[variant], sizes[size], className)}
+          {...props}
+        >
+          {children}
+        </Comp>
+      );
+    }
+
     return (
       <Comp
         ref={ref}
