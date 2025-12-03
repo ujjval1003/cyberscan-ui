@@ -1,5 +1,16 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public statusCode?: number,
+    public isNetworkError: boolean = false
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 class ApiClient {
   private getToken(): string | null {
     return localStorage.getItem('auth_token');
@@ -23,21 +34,44 @@ class ApiClient {
       headers['Content-Type'] = 'application/json';
     }
 
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      ...options,
-      headers,
-    });
+    let response: Response;
+    
+    try {
+      response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        ...options,
+        headers,
+      });
+    } catch (error) {
+      // Network error (no internet, server unreachable, CORS, etc.)
+      throw new ApiError(
+        'Unable to connect to the server. Please check your internet connection and try again.',
+        undefined,
+        true
+      );
+    }
 
     if (response.status === 401) {
       localStorage.removeItem('auth_token');
       localStorage.removeItem('auth_user');
       window.location.href = '/login';
-      throw new Error('Unauthorized');
+      throw new ApiError('Session expired. Please log in again.', 401);
+    }
+
+    if (response.status === 403) {
+      throw new ApiError('You do not have permission to perform this action.', 403);
+    }
+
+    if (response.status === 404) {
+      throw new ApiError('The requested resource was not found.', 404);
+    }
+
+    if (response.status >= 500) {
+      throw new ApiError('Server error. Please try again later.', response.status);
     }
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: 'Request failed' }));
-      throw new Error(error.message || 'Request failed');
+      throw new ApiError(error.message || 'Request failed', response.status);
     }
 
     if (response.headers.get('content-type')?.includes('application/json')) {

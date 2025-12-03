@@ -1,27 +1,55 @@
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { CyberButton } from "@/components/ui/CyberButton";
+import { LoadingState } from "@/components/ui/LoadingState";
+import { ApiErrorState } from "@/components/ui/ApiErrorState";
 import { useAuth } from "@/contexts/AuthContext";
+import { api, Image as ImageType } from "@/lib/api";
 import { Link } from "react-router-dom";
 import {
   Upload,
   FolderOpen,
   Search,
-  Shield,
   TrendingUp,
   Image,
   CheckCircle,
   AlertTriangle,
+  Clock,
 } from "lucide-react";
 
 const Dashboard = () => {
   const { user } = useAuth();
+  const [images, setImages] = useState<ImageType[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  useEffect(() => {
+    fetchImages();
+  }, []);
+
+  const fetchImages = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const result = await api.getImages();
+      setImages(result.images || []);
+    } catch (err: any) {
+      setError(err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const analyzedImages = images.filter(img => img.analysis?.phase2_complete);
+  const forgedCount = images.filter(img => img.analysis?.prediction === 'forged').length;
+  const authenticCount = images.filter(img => img.analysis?.prediction === 'authentic').length;
 
   const stats = [
-    { label: "Total Uploads", value: "24", icon: Image, color: "primary" },
-    { label: "Analyzed", value: "21", icon: CheckCircle, color: "secondary" },
-    { label: "Forged Detected", value: "7", icon: AlertTriangle, color: "accent" },
-    { label: "Accuracy", value: "98.5%", icon: TrendingUp, color: "primary" },
+    { label: "Total Uploads", value: images.length.toString(), icon: Image, color: "primary" },
+    { label: "Analyzed", value: analyzedImages.length.toString(), icon: CheckCircle, color: "secondary" },
+    { label: "Forged Detected", value: forgedCount.toString(), icon: AlertTriangle, color: "accent" },
+    { label: "Authentic", value: authenticCount.toString(), icon: TrendingUp, color: "primary" },
   ];
 
   const quickActions = [
@@ -60,6 +88,16 @@ const Dashboard = () => {
     hidden: { opacity: 0, y: 20 },
     visible: { opacity: 1, y: 0 },
   };
+
+  if (isLoading) {
+    return <LoadingState message="Loading dashboard..." />;
+  }
+
+  if (error) {
+    return <ApiErrorState error={error} onRetry={fetchImages} title="Failed to load dashboard" />;
+  }
+
+  const recentImages = images.slice(0, 3);
 
   return (
     <motion.div
@@ -139,32 +177,56 @@ const Dashboard = () => {
             </CyberButton>
           </div>
           
-          <div className="space-y-4">
-            {[1, 2, 3].map((_, index) => (
-              <motion.div
-                key={index}
-                className="flex items-center gap-4 p-4 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.5 + index * 0.1 }}
-              >
-                <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
-                  <Image className="w-8 h-8 text-primary" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium">sample_image_{index + 1}.png</p>
-                  <p className="text-sm text-muted-foreground">Analyzed 2 hours ago</p>
-                </div>
-                <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-                  index === 1 
-                    ? "bg-destructive/20 text-destructive" 
-                    : "bg-secondary/20 text-secondary"
-                }`}>
-                  {index === 1 ? "Forged" : "Authentic"}
-                </div>
-              </motion.div>
-            ))}
-          </div>
+          {recentImages.length === 0 ? (
+            <div className="text-center py-8">
+              <Image className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
+              <p className="text-muted-foreground">No images uploaded yet</p>
+              <CyberButton className="mt-4" asChild>
+                <Link to="/dashboard/upload">Upload Your First Image</Link>
+              </CyberButton>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {recentImages.map((image, index) => (
+                <motion.div
+                  key={image.id}
+                  className="flex items-center gap-4 p-4 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.5 + index * 0.1 }}
+                >
+                  <div className="w-16 h-16 rounded-lg overflow-hidden bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
+                    {image.original_url ? (
+                      <img src={image.original_url} alt={image.filename} className="w-full h-full object-cover" />
+                    ) : (
+                      <Image className="w-8 h-8 text-primary" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium">{image.filename}</p>
+                    <p className="text-sm text-muted-foreground">
+                      Uploaded {new Date(image.uploaded_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div className={`px-3 py-1 rounded-full text-sm font-medium flex items-center gap-1 ${
+                    image.analysis?.prediction === "forged"
+                      ? "bg-destructive/20 text-destructive" 
+                      : image.analysis?.prediction === "authentic"
+                      ? "bg-secondary/20 text-secondary"
+                      : "bg-muted text-muted-foreground"
+                  }`}>
+                    {image.analysis?.prediction === "forged" ? (
+                      <><AlertTriangle className="w-3 h-3" /> Forged</>
+                    ) : image.analysis?.prediction === "authentic" ? (
+                      <><CheckCircle className="w-3 h-3" /> Authentic</>
+                    ) : (
+                      <><Clock className="w-3 h-3" /> Pending</>
+                    )}
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          )}
         </GlassCard>
       </motion.div>
     </motion.div>
