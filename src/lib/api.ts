@@ -11,9 +11,33 @@ export class ApiError extends Error {
   }
 }
 
+// Event emitter for auth events
+type AuthEventType = 'session_expired' | 'forbidden';
+const authEventListeners: Map<AuthEventType, Set<() => void>> = new Map();
+
+export const authEvents = {
+  on: (event: AuthEventType, callback: () => void) => {
+    if (!authEventListeners.has(event)) {
+      authEventListeners.set(event, new Set());
+    }
+    authEventListeners.get(event)?.add(callback);
+  },
+  off: (event: AuthEventType, callback: () => void) => {
+    authEventListeners.get(event)?.delete(callback);
+  },
+  emit: (event: AuthEventType) => {
+    authEventListeners.get(event)?.forEach(callback => callback());
+  }
+};
+
 class ApiClient {
   private getToken(): string | null {
     return localStorage.getItem('auth_token');
+  }
+
+  private clearAuth() {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('auth_user');
   }
 
   private async request<T>(
@@ -42,7 +66,6 @@ class ApiClient {
         headers,
       });
     } catch (error) {
-      // Network error (no internet, server unreachable, CORS, etc.)
       throw new ApiError(
         'Unable to connect to the server. Please check your internet connection and try again.',
         undefined,
@@ -51,9 +74,8 @@ class ApiClient {
     }
 
     if (response.status === 401) {
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('auth_user');
-      window.location.href = '/login';
+      this.clearAuth();
+      authEvents.emit('session_expired');
       throw new ApiError('Session expired. Please log in again.', 401);
     }
 
@@ -79,6 +101,34 @@ class ApiClient {
     }
 
     return response as unknown as T;
+  }
+
+  // Get protected image URL
+  getProtectedImageUrl(filename: string): string {
+    const token = this.getToken();
+    return `${API_BASE_URL}/api/results/${filename}?token=${token}`;
+  }
+
+  // Fetch image as blob for protected images
+  async fetchImageBlob(imageUrl: string): Promise<string> {
+    try {
+      const token = this.getToken();
+      const response = await fetch(imageUrl, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to load image');
+      }
+      
+      const blob = await response.blob();
+      return URL.createObjectURL(blob);
+    } catch (error) {
+      console.error('Failed to fetch protected image:', error);
+      return '';
+    }
   }
 
   // Image endpoints
@@ -141,6 +191,13 @@ class ApiClient {
     });
   }
 
+  async updateUser(id: string, data: Partial<{ email: string; name: string; role: string }>) {
+    return this.request<User>(`/api/admin/users/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
   async deleteUser(id: string) {
     return this.request<{ message: string }>(`/api/admin/users/${id}`, { method: 'DELETE' });
   }
@@ -167,7 +224,19 @@ class ApiClient {
       headers: { 'Authorization': `Bearer ${token}` },
     });
     
-    if (!response.ok) throw new Error('Download failed');
+    if (response.status === 401) {
+      this.clearAuth();
+      authEvents.emit('session_expired');
+      throw new ApiError('Session expired. Please log in again.', 401);
+    }
+
+    if (response.status === 404) {
+      throw new ApiError('No data available for download.', 404);
+    }
+    
+    if (!response.ok) {
+      throw new ApiError('Download failed. Please try again.', response.status);
+    }
     
     const blob = await response.blob();
     const url = window.URL.createObjectURL(blob);
