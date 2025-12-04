@@ -1,4 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { authEvents } from '@/lib/api';
+import { toast } from '@/hooks/use-toast';
 
 interface User {
   id: string;
@@ -27,16 +29,50 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  const clearAuth = useCallback(() => {
+    setToken(null);
+    setUser(null);
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('auth_user');
+  }, []);
+
+  // Handle session expiry events from API client
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      clearAuth();
+      toast({
+        title: "Session Expired",
+        description: "Your session has expired. Please log in again.",
+        variant: "destructive",
+      });
+      // Redirect to login
+      window.location.href = '/login';
+    };
+
+    authEvents.on('session_expired', handleSessionExpired);
+    
+    return () => {
+      authEvents.off('session_expired', handleSessionExpired);
+    };
+  }, [clearAuth]);
+
+  // Initialize auth state from localStorage
   useEffect(() => {
     const storedToken = localStorage.getItem('auth_token');
     const storedUser = localStorage.getItem('auth_user');
     
     if (storedToken && storedUser) {
-      setToken(storedToken);
-      setUser(JSON.parse(storedUser));
+      try {
+        const parsedUser = JSON.parse(storedUser);
+        setToken(storedToken);
+        setUser(parsedUser);
+      } catch (error) {
+        // Invalid stored data, clear it
+        clearAuth();
+      }
     }
     setIsLoading(false);
-  }, []);
+  }, [clearAuth]);
 
   const login = async (email: string, password: string) => {
     try {
@@ -47,8 +83,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Login failed');
+        const error = await response.json().catch(() => ({ message: 'Login failed' }));
+        throw new Error(error.message || 'Invalid email or password');
       }
 
       const data = await response.json();
@@ -56,6 +92,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setUser(data.user);
       localStorage.setItem('auth_token', data.token);
       localStorage.setItem('auth_user', JSON.stringify(data.user));
+      
+      toast({
+        title: "Welcome back!",
+        description: `Logged in as ${data.user.name || data.user.email}`,
+      });
     } catch (error) {
       throw error;
     }
@@ -70,15 +111,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json' 
           },
+        }).catch(() => {
+          // Ignore logout API errors
         });
       }
-    } catch (error) {
-      console.error('Logout error:', error);
     } finally {
-      setToken(null);
-      setUser(null);
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('auth_user');
+      clearAuth();
+      toast({
+        title: "Logged out",
+        description: "You have been successfully logged out.",
+      });
     }
   };
 
@@ -91,10 +133,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
 
       if (!response.ok) {
-        const error = await response.json();
+        const error = await response.json().catch(() => ({ message: 'Registration failed' }));
         throw new Error(error.message || 'Registration failed');
       }
 
+      // Auto-login after registration
       await login(email, password);
     } catch (error) {
       throw error;

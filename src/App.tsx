@@ -9,6 +9,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
+import Forbidden from "./pages/Forbidden";
 
 // Dashboard Pages
 import Dashboard from "./pages/dashboard/Dashboard";
@@ -19,13 +20,21 @@ import AnalysisViewer from "./pages/dashboard/AnalysisViewer";
 // Admin Pages
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import ManageUsers from "./pages/admin/ManageUsers";
+import UserProfile from "./pages/admin/UserProfile";
 import UserImages from "./pages/admin/UserImages";
 
 // Layouts
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -38,6 +47,7 @@ const App = () => (
             {/* Public Routes */}
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/forbidden" element={<Forbidden />} />
 
             {/* User Dashboard Routes */}
             <Route path="/dashboard" element={<DashboardLayout />}>
@@ -52,11 +62,10 @@ const App = () => (
             <Route path="/admin" element={<AdminLayout />}>
               <Route index element={<AdminDashboard />} />
               <Route path="users" element={<ManageUsers />} />
-              <Route path="users/:userId" element={<ManageUsers />} />
+              <Route path="users/:userId" element={<UserProfile />} />
               <Route path="images" element={<UserImages />} />
               <Route path="users/:userId/images" element={<UserImages />} />
               <Route path="users/:userId/images/:imageId" element={<AnalysisViewer />} />
-              <Route path="settings" element={<AdminDashboard />} />
             </Route>
 
             {/* Catch-all */}
