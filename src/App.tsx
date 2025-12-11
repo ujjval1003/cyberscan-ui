@@ -10,6 +10,9 @@ import Index from "./pages/Index";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 import Forbidden from "./pages/Forbidden";
+import Privacy from "./pages/Privacy";
+import Terms from "./pages/Terms";
+import Contact from "./pages/Contact";
 
 // Dashboard Pages
 import Dashboard from "./pages/dashboard/Dashboard";
@@ -48,6 +51,9 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<Login />} />
             <Route path="/forbidden" element={<Forbidden />} />
+            <Route path="/privacy" element={<Privacy />} />
+            <Route path="/terms" element={<Terms />} />
+            <Route path="/contact" element={<Contact />} />
 
             {/* User Dashboard Routes */}
             <Route path="/dashboard" element={<DashboardLayout />}>
